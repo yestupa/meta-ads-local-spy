@@ -16,6 +16,8 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
+from .i18n import T, get_lang
+
 SYSTEM = ('你是资深的跨境电商 Meta（Facebook / Instagram）广告投放与素材策划顾问，帮助卖家研究竞对在投的广告素材，找到可以借鉴的爆款打法。'
           '只根据提供的文字、图片和数据下结论，不编造看不到的数据（点击率、转化率、花费、ROAS 等）。'
           '“在投天数”“同素材广告数”“曝光排序位置”是资料库公开的跑量信号，可以引用。'
@@ -110,7 +112,23 @@ class MarketSummary(BaseModel):
 
 
 class AnalyzeError(RuntimeError):
-    pass
+    """fatal=True：后面的分析也一定会失败（key 无效、没登录、额度用完、连不上），整批停止。"""
+    def __init__(self, msg, fatal=False):
+        super().__init__(msg)
+        self.fatal = fatal
+
+
+EN_NOTE = ('IMPORTANT: The user reads English. Write every output field in natural, concise English. '
+           'Rewritten ad copy and example primary text stay in the ad\'s original language (usually English). '
+           'The instructions and field descriptions are written in Chinese: follow them, but answer in English.')
+
+
+def _system():
+    return SYSTEM + ('\n\n' + EN_NOTE if get_lang() == 'en' else '')
+
+
+def _lang_note(content):
+    return content + [{'type': 'text', 'text': EN_NOTE}] if get_lang() == 'en' else content
 
 
 def system_proxy():
@@ -146,36 +164,37 @@ class Analyzer:
     def _call(self, content, schema, max_tokens=16000):
         a = self.anthropic
         content = [self._b64(c['path']) if c.get('type') == 'image_path' else c for c in content]
-        kw = dict(model=self.model, max_tokens=max_tokens, system=SYSTEM, messages=[{'role': 'user', 'content': content}],
+        content = _lang_note(content)
+        kw = dict(model=self.model, max_tokens=max_tokens, system=_system(), messages=[{'role': 'user', 'content': content}],
                   output_config={'effort': self.effort}, output_format=schema)
         if self.model in FALLBACK_MODELS:
             kw.update(fallbacks='default', betas=['server-side-fallback-2026-07-01'])
         try:
             resp = self.client.beta.messages.parse(**kw)
         except a.AuthenticationError as e:
-            raise AnalyzeError('API key 无效，请在“设置”里检查') from e
+            raise AnalyzeError(T('API key 无效，请在“设置”里检查'), fatal=True) from e
         except a.PermissionDeniedError as e:
-            raise AnalyzeError(f'API key 没有权限：{e.message}') from e
+            raise AnalyzeError(T('API key 没有权限：{e}', e=e.message), fatal=True) from e
         except a.NotFoundError as e:
-            raise AnalyzeError(f'模型不存在或不可用：{self.model}') from e
+            raise AnalyzeError(T('模型不存在或不可用：{m}', m=self.model), fatal=True) from e
         except a.RateLimitError as e:
-            raise AnalyzeError('API 调用太频繁或额度不足（429），请稍后再试') from e
+            raise AnalyzeError(T('API 调用太频繁或额度不足（429），请稍后再试'), fatal=True) from e
         except a.BadRequestError as e:
-            raise AnalyzeError(f'请求被拒绝（400）：{e.message[:200]}') from e
+            raise AnalyzeError(T('请求被拒绝（400）：{e}', e=e.message[:200])) from e
         except a.APIStatusError as e:
-            raise AnalyzeError(f'Claude API 错误 {e.status_code}：{e.message[:200]}') from e
+            raise AnalyzeError(T('Claude API 错误 {c}：{e}', c=e.status_code, e=e.message[:200])) from e
         except a.APIConnectionError as e:
-            raise AnalyzeError('连不上 Claude API。请检查网络/代理（设置里可以填代理地址）') from e
+            raise AnalyzeError(T('连不上 Claude API。请检查网络/代理（设置里可以填代理地址）'), fatal=True) from e
         u = resp.usage
         self.usage['input'] += (u.input_tokens or 0) + (getattr(u, 'cache_read_input_tokens', 0) or 0)
         self.usage['output'] += u.output_tokens or 0
         self.usage['calls'] += 1
         if resp.stop_reason == 'refusal':
-            raise AnalyzeError('模型拒绝分析这条内容')
+            raise AnalyzeError(T('模型拒绝分析这条内容'))
         if resp.stop_reason == 'max_tokens':
-            raise AnalyzeError('输出过长被截断')
+            raise AnalyzeError(T('输出过长被截断'))
         if resp.parsed_output is None:
-            raise AnalyzeError('模型没有返回可解析的结果')
+            raise AnalyzeError(T('模型没有返回可解析的结果'))
         return resp.parsed_output
 
     @staticmethod
@@ -339,19 +358,19 @@ def cli_env(settings=None):
 def claude_cli_status(exe=None, timeout=60, settings=None):
     exe = exe or find_claude_cli()
     if not exe:
-        return False, '没有安装 Claude Code（claude 命令）'
+        return False, T('没有安装 Claude Code（claude 命令）')
     try:
         p = subprocess.run([exe, '-p', '--output-format', 'json', '--model', 'haiku', '--max-turns', '1'], input='只回复 OK',
                            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=cli_env(settings))
         d = json.loads(p.stdout.strip().splitlines()[-1]) if p.stdout.strip() else {}
     except Exception as e:
-        return False, f'无法运行 Claude Code：{str(e)[:100]}'
+        return False, T('无法运行 Claude Code：{e}', e=str(e)[:100])
     if d.get('is_error') or not d:
         msg = str(d.get('result') or p.stderr.strip()[:200])
         if 'login' in msg.lower():
-            return False, '已安装，但还没有登录：打开终端运行 claude，输入 /login 登录（国内网络需先给终端设置代理）'
-        return False, f'已安装，但调用失败：{msg[:120]}'
-    return True, '已安装并已登录'
+            return False, T('已安装，但还没有登录：打开终端运行 claude，输入 /login 登录（国内网络需先给终端设置代理）')
+        return False, T('已安装，但调用失败：{e}', e=msg[:120])
+    return True, T('已安装并已登录')
 
 
 class ClaudeCodeAnalyzer(Analyzer):
@@ -359,7 +378,7 @@ class ClaudeCodeAnalyzer(Analyzer):
         self.settings = settings
         self.exe = find_claude_cli()
         if not self.exe:
-            raise AnalyzeError('没有找到 Claude Code 命令行（claude）。请先安装 Claude Code（https://claude.com/claude-code），然后在终端运行 claude 并登录')
+            raise AnalyzeError(T('没有找到 Claude Code 命令行（claude）。请先安装 Claude Code（https://claude.com/claude-code），然后在终端运行 claude 并登录'), fatal=True)
         self.workdir = workdir
         self.model = settings.get('cc_model') or 'sonnet'
         self.usage = {'input': 0, 'output': 0, 'calls': 0, 'engine': 'Claude Code'}
@@ -368,12 +387,13 @@ class ClaudeCodeAnalyzer(Analyzer):
         try:
             return self._call_once(content, schema)
         except AnalyzeError as e:
-            if '格式' not in str(e):
+            if '格式' not in str(e) and 'unexpected format' not in str(e):
                 raise
             return self._call_once(content + [{'type': 'text', 'text': '注意：上一次的回答没有按要求输出。这次务必只给出符合 JSON Schema 的结果。'}], schema)
 
     def _call_once(self, content, schema):
-        lines, n = [SYSTEM, ''], 0
+        content = _lang_note(content)
+        lines, n = [_system(), ''], 0
         for c in content:
             if c.get('type') == 'image_path':
                 n += 1
@@ -390,9 +410,9 @@ class ClaudeCodeAnalyzer(Analyzer):
             p = subprocess.run(cmd, input='\n'.join(lines), capture_output=True, text=True, encoding='utf-8', errors='replace',
                                cwd=self.workdir, timeout=900, env=cli_env(self.settings))
         except subprocess.TimeoutExpired as e:
-            raise AnalyzeError('Claude Code 超过 15 分钟没有返回') from e
+            raise AnalyzeError(T('Claude Code 超过 15 分钟没有返回')) from e
         except OSError as e:
-            raise AnalyzeError(f'无法运行 Claude Code：{e}') from e
+            raise AnalyzeError(T('无法运行 Claude Code：{e}', e=e), fatal=True) from e
         try:
             d = json.loads(p.stdout.strip().splitlines()[-1]) if p.stdout.strip() else {}
         except ValueError:
@@ -402,10 +422,10 @@ class ClaudeCodeAnalyzer(Analyzer):
             msg = res_text or p.stderr.strip()[:300] or f'退出码 {p.returncode}'
             low = msg.lower()
             if 'not logged in' in low or '/login' in low:
-                raise AnalyzeError('Claude Code 还没有登录。请打开终端运行 claude，输入 /login 登录后，再点“AI 分析”')
+                raise AnalyzeError(T('Claude Code 还没有登录。请打开终端运行 claude，输入 /login 登录后，再点“AI 分析”'), fatal=True)
             if 'limit' in low or 'usage' in low or 'quota' in low:
-                raise AnalyzeError(f'Claude 订阅的使用额度达到上限：{msg[:200]}')
-            raise AnalyzeError(f'Claude Code 返回错误：{msg[:300]}')
+                raise AnalyzeError(T('Claude 订阅的使用额度达到上限：{e}', e=msg[:200]), fatal=True)
+            raise AnalyzeError(T('Claude Code 返回错误：{e}', e=msg[:300]))
         u = d.get('usage') or {}
         self.usage['input'] += (u.get('input_tokens') or 0) + (u.get('cache_read_input_tokens') or 0) + (u.get('cache_creation_input_tokens') or 0)
         self.usage['output'] += u.get('output_tokens') or 0
@@ -428,4 +448,4 @@ class ClaudeCodeAnalyzer(Analyzer):
                     f.write(f'{e}\n\n--- stdout ---\n{p.stdout[-20000:]}\n\n--- stderr ---\n{p.stderr[-5000:]}')
             except OSError:
                 pass
-            raise AnalyzeError(f'Claude Code 返回的结果格式不符（{str(e)[:120]}），原始输出已保存到任务文件夹 debug_claude_code.txt') from e
+            raise AnalyzeError(T('Claude Code 返回的结果格式不符（{e}），原始输出已保存到任务文件夹 debug_claude_code.txt', e=str(e)[:120])) from e

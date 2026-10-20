@@ -9,41 +9,44 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><i>Meta</i>Meta 素材侦察面板 <span style="font-weight:600;opacity:.7;font-size:13px">· 跨境电商</span></div>
-  <div class="actions">
-    <button class="btn ghost" id="btnStarred">★ 收藏夹</button>
-    <button class="btn ghost" id="btnCheck">环境检查</button>
-    <button class="btn ghost" id="btnSettings">设置</button>
+  <div class="brand"><i>Meta</i><span data-i18n>Meta 素材侦察面板</span> <span style="font-weight:600;opacity:.7;font-size:13px" data-i18n>· 跨境电商</span></div>
+  <div class="topright">
+    <div class="actions">
+      <button class="btn ghost" id="btnStarred" data-i18n>★ 收藏夹</button>
+      <button class="btn ghost" id="btnCheck" data-i18n>环境检查</button>
+      <button class="btn ghost" id="btnSettings" data-i18n>设置</button>
+    </div>
+    <button class="btn ghost langbtn" id="btnLang" type="button" title="Switch to English">EN</button>
   </div>
 </header>
 <div class="layout">
   <aside class="side">
     <form class="card pad" id="searchForm">
-      <div class="seg" role="tablist"><button type="button" class="on" data-mode="keyword" role="tab">关键词模式</button><button type="button" data-mode="brand" role="tab">品牌模式</button></div>
+      <div class="seg" role="tablist"><button type="button" class="on" data-mode="keyword" role="tab" data-i18n>关键词模式</button><button type="button" data-mode="brand" role="tab" data-i18n>品牌模式</button></div>
       <div class="hint" id="modeHint">按产品词搜全网在投广告，看这个品类谁在投、怎么投。</div>
       <div class="field"><textarea class="kw" id="kw" rows="2" placeholder="产品词，例如 posture corrector&#10;多个词用逗号分隔（最多 5 个）"></textarea></div>
-      <div class="field" id="termsBox" style="display:none"><label for="terms">主页内关键词（可选）</label><input type="text" id="terms" placeholder="例如 dog food, cat litter（留空自动挑词）"></div>
-      <div class="field"><label for="country">投放国家</label><select id="country"></select></div>
-      <div class="field"><label for="depth">采集深度</label><select id="depth">
+      <div class="field" id="termsBox" style="display:none"><label for="terms" data-i18n>主页内关键词（可选）</label><input type="text" id="terms" placeholder="例如 dog food, cat litter（留空自动挑词）" data-i18n-ph></div>
+      <div class="field"><label for="country" data-i18n>投放国家</label><select id="country"></select></div>
+      <div class="field"><label for="depth" data-i18n>采集深度</label><select id="depth">
         <option value="quick">快速（每个词 2 次查询，约 60 条）</option>
         <option value="standard">标准（每个词 6 次查询，约 120–180 条）</option>
         <option value="deep">深度（每个词 10 次查询，约 200–300 条）</option></select></div>
       <div class="checks" style="margin-bottom:10px">
-        <label><input type="checkbox" id="optActive" checked> 只看在投广告</label>
-        <label><input type="checkbox" id="optAnalyze" checked> 抓完自动 AI 分析（引擎在“设置”里选）</label>
+        <label><input type="checkbox" id="optActive" checked> <span data-i18n>只看在投广告</span></label>
+        <label><input type="checkbox" id="optAnalyze" checked> <span data-i18n>抓完自动 AI 分析（引擎在“设置”里选）</span></label>
       </div>
-      <details class="adv"><summary>素材数量</summary>
+      <details class="adv"><summary data-i18n>素材数量</summary>
         <div class="row3">
-          <div class="field"><label for="maxVid">拆解视频</label><input type="number" id="maxVid" min="0" max="80"></div>
-          <div class="field"><label for="maxImg">下载图片</label><input type="number" id="maxImg" min="0" max="300"></div>
-          <div class="field"><label for="aiTop">AI 深拆</label><input type="number" id="aiTop" min="0" max="40"></div>
+          <div class="field"><label for="maxVid" data-i18n>拆解视频</label><input type="number" id="maxVid" min="0" max="80"></div>
+          <div class="field"><label for="maxImg" data-i18n>下载图片</label><input type="number" id="maxImg" min="0" max="300"></div>
+          <div class="field"><label for="aiTop" data-i18n>AI 深拆</label><input type="number" id="aiTop" min="0" max="40"></div>
         </div>
-        <div class="hint" style="margin-top:0">按“爆款指数”从高到低处理。文案的 AI 点评覆盖全部广告；“AI 深拆”是看图/看分镜的逐条拆解。其他素材可以在详情里单独点“AI 拆解”。</div>
+        <div class="hint" style="margin-top:0" data-i18n>按“爆款指数”从高到低处理。文案的 AI 点评覆盖全部广告；“AI 深拆”是看图/看分镜的逐条拆解。其他素材可以在详情里单独点“AI 拆解”。</div>
       </details>
-      <button class="btn primary" style="width:100%;padding:10px" type="submit">开始抓取</button>
+      <button class="btn primary" style="width:100%;padding:10px" type="submit" data-i18n>开始抓取</button>
     </form>
     <div class="card pad">
-      <h3>历史任务</h3>
+      <h3 data-i18n>历史任务</h3>
       <div class="jobs" id="jobs"></div>
     </div>
   </aside>
@@ -53,27 +56,27 @@
 <div class="drawer" id="drawer"><div class="panel" id="drawerPanel"></div></div>
 
 <div class="modal" id="settingsModal"><div class="card">
-  <h2>设置</h2>
-  <div class="field"><label for="sEngine">AI 分析引擎</label><select id="sEngine"></select></div>
+  <h2 data-i18n>设置</h2>
+  <div class="field"><label for="sEngine" data-i18n>AI 分析引擎</label><select id="sEngine"></select></div>
   <div id="ccBox">
-    <div class="hint">需要先安装 Claude Code，并在终端运行 <code>claude</code> 后输入 <code>/login</code> 登录你的 Claude 订阅（Pro / Max）。分析会占用订阅额度。</div>
-    <div class="field"><label for="sCcModel">Claude Code 使用的模型</label><select id="sCcModel"></select></div>
+    <div class="hint" data-i18n>需要先安装 Claude Code，并在终端运行 <code>claude</code> 后输入 <code>/login</code> 登录你的 Claude 订阅（Pro / Max）。分析会占用订阅额度。</div>
+    <div class="field"><label for="sCcModel" data-i18n>Claude Code 使用的模型</label><select id="sCcModel"></select></div>
   </div>
   <div id="apiBox">
     <div class="field"><label for="sKey">Claude API key</label><input type="password" id="sKey" placeholder="sk-ant-..."></div>
-    <div class="hint">只保存在本机 data/settings.json，不会上传。申请地址：console.anthropic.com</div>
-    <div class="field"><label for="sModel">分析模型</label><select id="sModel"></select></div>
-    <div class="field"><label for="sEffort">分析深度</label><select id="sEffort"><option value="low">低（快、省）</option><option value="medium">中（推荐）</option><option value="high">高（细、贵）</option></select></div>
+    <div class="hint" data-i18n>只保存在本机 data/settings.json，不会上传。申请地址：console.anthropic.com</div>
+    <div class="field"><label for="sModel" data-i18n>分析模型</label><select id="sModel"></select></div>
+    <div class="field"><label for="sEffort" data-i18n>分析深度</label><select id="sEffort"><option value="low" data-i18n>低（快、省）</option><option value="medium" data-i18n>中（推荐）</option><option value="high" data-i18n>高（细、贵）</option></select></div>
   </div>
-  <div class="field"><label for="sProxy">代理地址（可选）</label><input type="text" id="sProxy" placeholder="例如 http://127.0.0.1:7890 ；留空使用系统代理"></div>
+  <div class="field"><label for="sProxy" data-i18n>代理地址（可选）</label><input type="text" id="sProxy" placeholder="例如 http://127.0.0.1:7890 ；留空使用系统代理" data-i18n-ph></div>
   <div class="checks" style="margin-bottom:10px">
-    <label><input type="checkbox" id="sTranscribe"> 视频语音转写（口播文字 + 时间戳）</label>
-    <label><input type="checkbox" id="sShop"> 读取 Shopify 落地页的商品名、售价和原价</label>
-    <label><input type="checkbox" id="sShow"> 抓取时显示浏览器窗口（遇到验证码时用）</label>
+    <label><input type="checkbox" id="sTranscribe"> <span data-i18n>视频语音转写（口播文字 + 时间戳）</span></label>
+    <label><input type="checkbox" id="sShop"> <span data-i18n>读取 Shopify 落地页的商品名、售价和原价</span></label>
+    <label><input type="checkbox" id="sShow"> <span data-i18n>抓取时显示浏览器窗口（遇到验证码时用）</span></label>
   </div>
-  <div class="field"><label for="sWhisper">转写模型</label><select id="sWhisper"></select></div>
+  <div class="field"><label for="sWhisper" data-i18n>转写模型</label><select id="sWhisper"></select></div>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-    <button class="btn" id="sCancel" type="button">取消</button><button class="btn primary" id="sSave" type="button">保存</button>
+    <button class="btn" id="sCancel" type="button" data-i18n>取消</button><button class="btn primary" id="sSave" type="button" data-i18n>保存</button>
   </div>
 </div></div>
 <footer id="yestupa-wm" class="wm">made by <a href="https://yestupa.com" target="_blank" rel="noopener">yestupa.com</a>/<a href="https://yestupa.net" target="_blank" rel="noopener">yestupa.net</a> with ❤️</footer>

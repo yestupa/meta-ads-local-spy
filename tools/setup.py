@@ -71,9 +71,9 @@ def check():
             'from app.main import env_check\n'
             'r = env_check()\n'
             'for x in r: print(("  ✓ " if x["ok"] else "  ✗ ") + x["name"] + "：" + x["detail"])\n'
-            'need = {"Python", "Playwright", "ffmpeg（视频分镜）"}\n'
-            'hard = [x for x in r if not x["ok"] and x["name"] in need]\n'
-            'soft = [x for x in r if not x["ok"] and x["name"] not in need]\n'
+            'need = {"python", "playwright", "ffmpeg"}\n'
+            'hard = [x for x in r if not x["ok"] and x.get("key") in need]\n'
+            'soft = [x for x in r if not x["ok"] and x.get("key") not in need]\n'
             'print("RESULT: " + ("FAIL" if hard else "WARN" if soft else "OK"))\n')
     env = dict(os.environ, PYTHONIOENCODING='utf-8')
     say('环境检查：')

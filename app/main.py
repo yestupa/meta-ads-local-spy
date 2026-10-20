@@ -13,6 +13,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import config
+from .i18n import T, get_lang, set_lang
 from .jobs import Manager
 from .util import stable_dumps
 
@@ -21,49 +22,57 @@ manager = None
 
 
 def env_check():
+    """返回检查项列表。key 固定不变（tools/setup.py 按 key 判断），name/detail 按当前语言显示。"""
     s = config.load_settings()
-    out = [{'name': 'Python', 'ok': sys.version_info >= (3, 10), 'detail': sys.version.split()[0]}]
+    out = []
+
+    def add(key, name, ok, detail):
+        out.append({'key': key, 'name': name, 'ok': ok, 'detail': detail})
+    add('python', 'Python', sys.version_info >= (3, 10), sys.version.split()[0])
     try:
         import playwright  # noqa
-        out.append({'name': 'Playwright', 'ok': True, 'detail': '已安装'})
+        add('playwright', 'Playwright', True, T('已安装'))
     except ImportError:
-        out.append({'name': 'Playwright', 'ok': False, 'detail': '未安装，请先运行“1-安装”'})
+        add('playwright', 'Playwright', False, T('未安装，请先运行“1-安装”'))
     from . import media
-    out.append({'name': 'ffmpeg（视频分镜）', 'ok': media.has_ffmpeg(), 'detail': '已安装' if media.has_ffmpeg() else '未安装，请重新运行“1-安装”'})
+    add('ffmpeg', T('ffmpeg（视频分镜）'), media.has_ffmpeg(), T('已安装') if media.has_ffmpeg() else T('未安装，请重新运行“1-安装”'))
     w = media.whisper_ok()
-    out.append({'name': '语音转写', 'ok': w or not s.get('transcribe'), 'detail': ('已安装 faster-whisper（模型 ' + s.get('whisper_model', 'small') + '）') if w else
-                '未安装 faster-whisper（不影响抓取，只是视频没有口播文字）'})
+    add('whisper', T('语音转写'), w or not s.get('transcribe'),
+        T('已安装 faster-whisper（模型 {m}）', m=s.get('whisper_model', 'small')) if w else T('未安装 faster-whisper（不影响抓取，只是视频没有口播文字）'))
     from .analyze import system_proxy
     proxy = s.get('proxy') or system_proxy()
+    fine = T('正常（代理 {p}）', p=proxy) if proxy else T('正常')
     try:
         h = [urllib.request.ProxyHandler({'http': proxy, 'https': proxy})] if proxy else []
         urllib.request.build_opener(*h).open(urllib.request.Request('https://www.facebook.com/ads/library/', headers={'User-Agent': 'Mozilla/5.0'}), timeout=10)
-        out.append({'name': '访问 Facebook', 'ok': True, 'detail': '正常' + (f'（代理 {proxy}）' if proxy else '')})
+        add('facebook', T('访问 Facebook'), True, fine)
     except urllib.error.HTTPError:  # Facebook 对非浏览器请求返回 403/challenge，能收到响应就说明网络是通的
-        out.append({'name': '访问 Facebook', 'ok': True, 'detail': '正常' + (f'（代理 {proxy}）' if proxy else '')})
+        add('facebook', T('访问 Facebook'), True, fine)
     except Exception as e:
-        out.append({'name': '访问 Facebook', 'ok': False, 'detail': f'失败：{str(e)[:80]}。请开启代理/VPN，或在设置里填写代理地址'})
+        add('facebook', T('访问 Facebook'), False, T('失败：{e}。请开启代理/VPN，或在设置里填写代理地址', e=str(e)[:80]))
     engine = s.get('engine') or 'claude_code'
     if engine == 'claude_code':
         ok, detail = claude_status_cached()
-        out.append({'name': 'AI 分析：Claude Code', 'ok': ok, 'detail': detail + ('' if ok else '（不影响抓取和本地分析）')})
+        add('ai', T('AI 分析：Claude Code'), ok, detail + ('' if ok else T('（不影响抓取和本地分析）')))
     elif engine == 'api':
-        out.append({'name': 'AI 分析：Claude API', 'ok': bool(s.get('api_key')), 'detail': '已填写 API key' if s.get('api_key') else '未填写 API key（不影响抓取和本地分析）'})
+        add('ai', T('AI 分析：Claude API'), bool(s.get('api_key')), T('已填写 API key') if s.get('api_key') else T('未填写 API key（不影响抓取和本地分析）'))
     else:
-        out.append({'name': 'AI 分析', 'ok': True, 'detail': '已关闭（只抓取 + 本地分析）'})
+        add('ai', T('AI 分析'), True, T('已关闭（只抓取 + 本地分析）'))
     return out
 
 
-_cc_cache = {'t': 0, 'v': None}
+_cc_cache = {}
 
 
 def claude_status_cached(force=False):
+    """检查 Claude Code 登录状态会发一个极小的请求，所以结果按语言缓存 5 分钟。"""
     import time
     from .analyze import claude_cli_status
-    if force or not _cc_cache['v'] or time.time() - _cc_cache['t'] > 300:
-        _cc_cache['v'] = claude_cli_status(settings=config.load_settings())
-        _cc_cache['t'] = time.time()
-    return _cc_cache['v']
+    lang = get_lang()
+    c = _cc_cache.get(lang)
+    if force or not c or time.time() - c[0] > 300:
+        c = _cc_cache[lang] = (time.time(), claude_cli_status(settings=config.load_settings()))
+    return c[1]
 
 
 # 署名水印：作者要求保留，请勿删除或修改。页面里缺了会在这里补上。
@@ -87,7 +96,7 @@ def export_report(job):
     data = json.dumps(job, ensure_ascii=False).replace('</', '<\\/')
     html = html.replace('<link rel="stylesheet" href="/static/style.css">', f'<style>{css}</style>')
     html = html.replace('<script src="/static/app.js"></script>', f'<script>window.STATIC_JOB = {data};</script><script>{js}</script>')
-    path = os.path.join(config.JOBS, job['id'], '报告.html')
+    path = os.path.join(config.JOBS, job['id'], T('报告.html', job['options'].get('lang')))
     with open(path, 'w', encoding='utf-8') as f:
         f.write(with_watermark(html))
     return path
@@ -99,8 +108,10 @@ def export_csv(job):
     j = lambda xs: ' | '.join(str(x) for x in (xs or []))
     an = lambda a: a.get('analysis') or {}
     cr = lambda a: a.get('copyReview') or {}
+    lg = job['options'].get('lang')
+    v = lambda x: T(x, lg) if isinstance(x, str) else x  # 判定、标签、开头类型等分类值
     cols = [
-        ('排名', lambda a: a.get('rank')), ('爆款指数', lambda a: a.get('score')), ('判定', lambda a: a.get('verdict')),
+        ('排名', lambda a: a.get('rank')), ('爆款指数', lambda a: a.get('score')), ('判定', lambda a: v(a.get('verdict'))),
         ('资料库编号', lambda a: a['id']), ('资料库链接', lambda a: a.get('libraryUrl')), ('主页', lambda a: a.get('pageName')),
         ('主页粉丝', lambda a: a.get('pageLikes')), ('形式', lambda a: a.get('format')), ('上线日期', lambda a: a.get('startDate')),
         ('在投天数', lambda a: a.get('daysLive')), ('同素材广告数', lambda a: a.get('variants')), ('曝光排序位置', lambda a: a.get('impRank')),
@@ -108,7 +119,7 @@ def export_csv(job):
         ('链接描述', lambda a: a.get('linkDescription')), ('CTA', lambda a: a.get('cta')), ('落地页', lambda a: a.get('linkUrl')),
         ('域名', lambda a: a.get('domain')), ('商品名', lambda a: (a.get('product') or {}).get('title')),
         ('售价', lambda a: (a.get('product') or {}).get('price')), ('原价', lambda a: (a.get('product') or {}).get('compareAt')),
-        ('文案标签', lambda a: j((a.get('copy') or {}).get('tags'))), ('开头类型', lambda a: (a.get('copy') or {}).get('hookType')),
+        ('文案标签', lambda a: j(v(t) for t in (a.get('copy') or {}).get('tags') or [])), ('开头类型', lambda a: v((a.get('copy') or {}).get('hookType'))),
         ('视频秒数', lambda a: (a.get('video') or {}).get('seconds')), ('镜头数', lambda a: (a.get('video') or {}).get('shots')),
         ('平均镜头时长', lambda a: (a.get('video') or {}).get('avgShot')), ('口播转写', lambda a: ((a.get('video') or {}).get('transcript') or {}).get('text')),
         ('AI 卖点角度', lambda a: cr(a).get('angle') or an(a).get('angle')), ('AI 钩子类型', lambda a: cr(a).get('hookType')),
@@ -117,10 +128,10 @@ def export_csv(job):
         ('AI 优点', lambda a: j(an(a).get('strengths'))), ('AI 可改良', lambda a: j(an(a).get('improvements'))),
         ('AI 可借鉴', lambda a: an(a).get('borrow')), ('AI 改写', lambda a: an(a).get('rewrite')), ('收藏', lambda a: '★' if a.get('starred') else ''),
     ]
-    path = os.path.join(config.JOBS, job['id'], '素材清单.csv')
+    path = os.path.join(config.JOBS, job['id'], T('素材清单.csv', lg))
     with open(path, 'w', encoding='utf-8-sig', newline='') as f:
         w = csv.writer(f)
-        w.writerow([c[0] for c in cols])
+        w.writerow([T(c[0], lg) for c in cols])
         for a in job.get('results', {}).get('ads', []):
             w.writerow(['' if c[1](a) is None else c[1](a) for c in cols])
     return path
@@ -218,6 +229,7 @@ class Handler(BaseHTTPRequestHandler):
         return p if p.startswith(os.path.realpath(base) + os.sep) else None
 
     def do_GET(self):
+        set_lang(config.load_settings().get('lang'))
         u = urllib.parse.urlparse(self.path)
         parts = [urllib.parse.unquote(x) for x in u.path.strip('/').split('/') if x]
         if not parts:
@@ -247,10 +259,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 2:
                 return self._json(manager.list())
             j = manager.get(parts[2])
-            return self._json(j) if j else self._json({'error': '任务不存在'}, 404)
+            return self._json(j) if j else self._json({'error': T('任务不存在')}, 404)
         return self._json({'error': 'not found'}, 404)
 
     def do_POST(self):
+        set_lang(config.load_settings().get('lang'))
         u = urllib.parse.urlparse(self.path)
         parts = [urllib.parse.unquote(x) for x in u.path.strip('/').split('/') if x]
         body = self._body()
@@ -260,16 +273,16 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ['api', 'jobs'] and len(parts) == 2:
             kw = (body.get('keyword') or '').strip()
             if not kw:
-                return self._json({'error': '请输入关键词'}, 400)
+                return self._json({'error': T('请输入关键词')}, 400)
             return self._json(manager.create(kw, body.get('options') or {}))
         if parts[:2] == ['api', 'jobs'] and len(parts) == 4:
             jid, action = parts[2], parts[3]
             j = manager.get(jid)
             if not j:
-                return self._json({'error': '任务不存在'}, 404)
+                return self._json({'error': T('任务不存在')}, 404)
             if action == 'analyze':
                 r = manager.reanalyze(jid)
-                return self._json(r or {'error': '任务正在运行，稍后再试'}, 200 if r else 409)
+                return self._json(r or {'error': T('任务正在运行，稍后再试')}, 200 if r else 409)
             if action == 'analyzead':
                 r = manager.analyze_ad(jid, str(body.get('adId') or ''))
                 return self._json(r, 409 if r.get('error') else 200)
@@ -310,16 +323,17 @@ def main():
             pass
     from .util import check_bundle
     check_bundle()
+    set_lang(config.load_settings().get('lang'))
     url = f'http://127.0.0.1:{PORT}'
     try:
         srv = ExclusiveServer(('127.0.0.1', PORT), Handler)
     except OSError:
-        print(f'面板已经在运行（端口 {PORT} 被占用），直接打开：{url}', flush=True)
+        print(T('面板已经在运行（端口 {p} 被占用），直接打开：{u}', p=PORT, u=url), flush=True)
         if os.environ.get('METASPY_NO_BROWSER') != '1':
             webbrowser.open(url)
         return
     manager = Manager()
-    print(f'面板已启动：{url}  （关闭这个窗口即可停止）', flush=True)
+    print(T('面板已启动：{u}  （关闭这个窗口即可停止）', u=url), flush=True)
     if os.environ.get('METASPY_NO_BROWSER') != '1':
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     try:

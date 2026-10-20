@@ -9,6 +9,7 @@ import re
 import time
 import urllib.parse
 
+from .i18n import T
 from .util import extract_json_objects_containing, ts_date
 
 LIB = 'https://www.facebook.com/ads/library/'
@@ -104,10 +105,10 @@ def _open_list(page, url):
     page.goto(url, wait_until='domcontentloaded', timeout=60000)
     page.wait_for_timeout(4500)
     if '/login' in page.url or 'checkpoint' in page.url:
-        raise MetaError('Facebook 跳转到了登录/验证页面。换一个代理节点，或者过一会儿再试')
+        raise MetaError(T('Facebook 跳转到了登录/验证页面。换一个代理节点，或者过一会儿再试'))
     html = page.content()
     if 'xfb_ad_library_is_captcha_required":true' in html:
-        raise MetaError('Meta 要求验证码。在设置里勾选“显示浏览器窗口”后重试，手动完成验证；或者换一个代理节点')
+        raise MetaError(T('Meta 要求验证码。在设置里勾选“显示浏览器窗口”后重试，手动完成验证；或者换一个代理节点'))
     m = re.search(r'"search_results_connection":\{"count":(\d+)', html)
     ads, seen = [], set()
     for n in extract_json_objects_containing(html, 'ad_archive_id'):
@@ -127,14 +128,14 @@ def collect(page, keywords, country, depth, active_only, log, progress, check):
         for vi, (label, p) in enumerate(variants):
             check()
             idx = ki * len(variants) + vi + 1
-            progress(f'“{kw}” · {label}（{idx}/{n_total}）')
+            progress(T('“{kw}” · {label}（{i}/{n}）', kw=kw, label=T(label), i=idx, n=n_total))
             url = list_url(country, kw, p['sort'], p['media'], p.get('platform'), p.get('exact'), active_only)
             try:
                 total, got = _open_list(page, url)
             except MetaError:
                 raise
             except Exception as e:
-                log(f'查询失败 {kw} · {label}：{str(e).splitlines()[0][:150]}')
+                log(T('查询失败 {kw} · {label}：{e}', kw=kw, label=T(label), e=str(e).splitlines()[0][:150]))
                 queries.append({'keyword': kw, 'label': label, 'url': url, 'total': None, 'got': 0, 'new': 0, 'error': str(e)[:150]})
                 continue
             if label == Q_IMP_ALL[0]:
@@ -154,10 +155,10 @@ def collect(page, keywords, country, depth, active_only, log, progress, check):
                 else:
                     cur['newRank'] = min(cur.get('newRank') or 99, pos)
             queries.append({'keyword': kw, 'label': label, 'url': url, 'total': total, 'got': len(got), 'new': new})
-            log(f'{kw} · {label}：资料库共 {total if total is not None else "?"} 条，本次拿到 {len(got)} 条，新增 {new} 条')
+            log(T('{kw} · {label}：资料库共 {t} 条，本次拿到 {g} 条，新增 {n} 条', kw=kw, label=T(label), t=total if total is not None else '?', g=len(got), n=new))
             empty_streak = empty_streak + 1 if not got else 0
             if empty_streak >= 3:
-                log('连续 3 次查询没有返回广告，可能被 Meta 限流，提前结束采集')
+                log(T('连续 3 次查询没有返回广告，可能被 Meta 限流，提前结束采集'))
                 return {'ads': list(ads.values()), 'queries': queries, 'totals': totals, 'stoppedEarly': True}
             time.sleep(1.5)
     return {'ads': list(ads.values()), 'queries': queries, 'totals': totals, 'stoppedEarly': False}

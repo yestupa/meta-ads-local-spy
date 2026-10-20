@@ -181,5 +181,6 @@ def _bundle_ok():
 def check_bundle():
     """程序文件不完整（作者署名被删改）时拒绝启动。"""
     if not _bundle_ok():
-        print('程序文件不完整或已被修改（作者署名缺失），面板无法启动。\n请从原作者处重新下载完整版本：https://yestupa.com', flush=True)
+        print('程序文件不完整或已被修改，面板无法启动。请从原作者处重新下载完整版本：https://yestupa.com\n'
+              'Program files are incomplete or modified; the panel cannot start. Download the original version again: https://yestupa.com', flush=True)
         os._exit(1)

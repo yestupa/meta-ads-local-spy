@@ -14,7 +14,7 @@ a{color:var(--blue)}button{font:inherit;cursor:pointer;color:inherit}input,selec
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:0 20px;background:var(--navy);color:var(--on-navy)}
 .brand{font-weight:900;font-size:16px;display:flex;align-items:center;gap:10px}.brand i{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--blue);color:var(--on-accent);font-style:normal;font-size:12px}
-.topbar .actions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:10px;padding:7px 12px;font-weight:700;font-size:13px}
+.topbar .actions{display:flex;gap:8px;flex-wrap:wrap}.topright{display:flex;gap:8px;align-items:center}.langbtn{min-width:52px;font-weight:800}.btn{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:10px;padding:7px 12px;font-weight:700;font-size:13px}
 .btn:hover{border-color:var(--blue)}.btn.primary{background:var(--blue);border-color:var(--blue);color:var(--on-accent)}.btn.danger{color:var(--coral)}.btn.ghost{background:transparent;color:var(--on-navy-muted);border-color:var(--on-navy-line)}
 .btn.sm{padding:4px 9px;font-size:12px}.btn:disabled{opacity:.5;cursor:not-allowed}
 .layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;padding:18px;max-width:1680px;margin:auto}

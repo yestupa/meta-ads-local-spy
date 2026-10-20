@@ -2,6 +2,9 @@
 
 用户让你“安装 / 启动 / 更新”这个工具时，按下面的步骤做。每一步都用一两句大白话告诉用户你在做什么：用户大多不是程序员。
 
+用户用英文和你交流时，全程用英文回复，并告诉用户：面板右上角的 **EN / 中文** 按钮可以切换界面语言（第一次打开会按浏览器语言自动选择）。
+If the user writes in English, reply in English throughout, and tell them the **EN / 中文** button at the top right of the panel switches the interface language.
+
 仓库地址：https://github.com/yestupa/meta-ads-local-spy
 
 ## 1. 放在哪里

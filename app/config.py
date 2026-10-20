@@ -17,6 +17,13 @@ COUNTRIES = {
     'BR': '巴西', 'MX': '墨西哥', 'ALL': '全部国家',
 }
 
+COUNTRIES_EN = {
+    'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia', 'NZ': 'New Zealand', 'DE': 'Germany',
+    'FR': 'France', 'IT': 'Italy', 'ES': 'Spain', 'NL': 'Netherlands', 'SE': 'Sweden', 'PL': 'Poland', 'IE': 'Ireland',
+    'JP': 'Japan', 'KR': 'South Korea', 'SG': 'Singapore', 'MY': 'Malaysia', 'PH': 'Philippines', 'TH': 'Thailand',
+    'AE': 'United Arab Emirates', 'SA': 'Saudi Arabia', 'BR': 'Brazil', 'MX': 'Mexico', 'ALL': 'All countries',
+}
+
 MODELS = {
     'claude-opus-5-5': 'Claude Opus 5.5（分析最细，较贵）',
     'claude-sonnet-5-5': 'Claude Sonnet 5.5（推荐，性价比高）',
@@ -32,6 +39,7 @@ CC_MODELS = {'sonnet': 'Sonnet（推荐）', 'opus': 'Opus（分析更细，更�
 WHISPER_MODELS = {'tiny': 'tiny（最快）', 'base': 'base', 'small': 'small（推荐）', 'medium': 'medium（最准，较慢）'}
 
 DEFAULTS = {
+    'lang': '',                 # 界面语言：zh / en；留空 = 第一次打开时按浏览器语言自动选
     'engine': 'claude_code',
     'cc_model': 'sonnet',
     'api_key': '',
@@ -102,5 +110,9 @@ def public_settings():
     key = s.get('api_key') or ''
     s['api_key'] = ('••••••••' + key[-4:]) if key else ''
     s['has_api_key'] = bool(key)
-    s.update(countries=COUNTRIES, models=MODELS, engines=ENGINES, cc_models=CC_MODELS, whisper_models=WHISPER_MODELS)
+    from .i18n import T
+    lang = 'en' if s.get('lang') == 'en' else 'zh'
+    tr = lambda d: {k: T(v, lang) for k, v in d.items()}
+    s.update(countries=COUNTRIES_EN if lang == 'en' else COUNTRIES, models=tr(MODELS), engines=tr(ENGINES), cc_models=tr(CC_MODELS),
+             whisper_models=tr(WHISPER_MODELS))
     return s

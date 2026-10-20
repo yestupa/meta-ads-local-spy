@@ -4,6 +4,7 @@ import json
 import re
 import urllib.parse
 
+from .i18n import T
 from .util import host_of
 
 
@@ -60,7 +61,7 @@ def enrich(page, ads, log, progress, check, limit=50):
         check()
         if bad.get(h, 0) >= 2:
             continue
-        progress(f'读取商品页 {i + 1}/{len(todo)}：{h}')
+        progress(T('读取商品页 {i}/{n}：{h}', i=i + 1, n=len(todo), h=h))
         try:
             info = _fetch(page, h, hd)
         except Exception:
@@ -75,5 +76,5 @@ def enrich(page, ads, log, progress, check, limit=50):
             a['product'] = products[a['productKey']]
         if a.get('domain') in shopify_hosts:
             a['shopPlatform'] = 'Shopify'
-    log(f'落地页：{len(refs)} 个商品页，读到 {len(products)} 个 Shopify 商品的价格（{len(shopify_hosts)} 家店）')
+    log(T('落地页：{r} 个商品页，读到 {p} 个 Shopify 商品的价格（{s} 家店）', r=len(refs), p=len(products), s=len(shopify_hosts)))
     return products

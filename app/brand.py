@@ -11,6 +11,7 @@ import re
 import time
 import urllib.parse
 
+from .i18n import T
 from .meta import LIB, MetaError, _open_list, list_url
 from .util import host_of, registrable
 
@@ -33,6 +34,13 @@ what when how its it's who why one two any each into than then them they their t
 today deal deals sale code use using used need want make made like love find every first back day days week weeks time ever still well good
 great https www com amp low high support help helps keep give right perfect favorite everything anything available
 limited shipping orders link bio click tap""".split())
+
+
+def _label(label):
+    """查询标签（内部用中文）翻译成当前语言，用于日志。"""
+    if label.startswith('主页内搜索 · '):
+        return T('主页内搜索 · {term}', term=label.split(' · ', 1)[1])
+    return T(label)
 
 
 def page_url(country, page_id, sort='total_impressions', media='all', platform=None, q=None, active_only=True):
@@ -73,18 +81,18 @@ def identify(page, text, country, log, progress):
     """按品牌名/域名搜索资料库，给出现的每个主页打分：名称一致、主页链接一致、落地页是品牌域名、粉丝数。返回 (最佳, 候选列表)。"""
     b = parse_input(text)
     if b['kind'] == 'id':
-        return {'pageId': b['value'], 'pageName': None, 'score': 100, 'reasons': ['直接指定的主页 ID']}, []
+        return {'pageId': b['value'], 'pageName': None, 'score': 100, 'reasons': [T('直接指定的主页 ID')]}, []
     terms = [b['name']] + ([b['domain']] if b.get('domain') else [])
     pages = {}
     for term in terms:
         for sort in ('total_impressions', 'relevancy_monthly_grouped'):
-            progress(f'正在识别“{text}”的官方主页（搜索 {term}）')
+            progress(T('正在识别“{t}”的官方主页（搜索 {s}）', t=text, s=term))
             try:
                 _, ads = _open_list(page, list_url(country, term, sort=sort, active_only=False))
             except MetaError:
                 raise
             except Exception as e:
-                log(f'识别主页时查询失败（{term}）：{str(e)[:120]}')
+                log(T('识别主页时查询失败（{s}）：{e}', s=term, e=str(e)[:120]))
                 continue
             for a in ads:
                 p = pages.setdefault(a['pageId'], {'pageId': a['pageId'], 'pageName': a['pageName'], 'pageUrl': a.get('pageUrl'),
@@ -103,32 +111,32 @@ def identify(page, text, country, log, progress):
         slug = ((p.get('pageUrl') or '').rstrip('/').split('/')[-1]).lower()
         if nn == want:
             score += 50
-            why.append('主页名称与品牌一致')
+            why.append(T('主页名称与品牌一致'))
         elif want and (nn.startswith(want) or nn.endswith(want)) and len(nn) <= len(want) + 8:
             score += 25
-            why.append('主页名称包含品牌名')
+            why.append(T('主页名称包含品牌名'))
         if b.get('slug') and slug == b['slug']:
             score += 60
-            why.append('主页链接一致')
+            why.append(T('主页链接一致'))
         elif want and norm_name(slug) == want:
             score += 20
-            why.append('主页链接名与品牌一致')
+            why.append(T('主页链接名与品牌一致'))
         if want_dom:
             hits = p['domains'].get(want_dom, 0)
         else:
             hits = sum(v for d, v in p['domains'].items() if norm_name(d.split('.')[0]) == want)
         if hits:
             score += round(25 * hits / max(sum(p['domains'].values()), 1))
-            why.append(f'{hits} 条广告落地到品牌域名')
+            why.append(T('{n} 条广告落地到品牌域名', n=hits))
         if p['likes']:
             score += min(15, round(math.log10(p['likes'] + 1) * 2.5))
-            why.append(f'{p["likes"]:,} 粉丝')
+            why.append(T('{n} 粉丝', n=f'{p["likes"]:,}'))
         out.append(dict(p, score=score, reasons=why, domains=dict(p['domains'].most_common(3))))
     out.sort(key=lambda p: (-p['score'], -p['likes']))
     if not out:
         return None, []
     best = out[0]
-    log(f'识别主页：{best["pageName"]}（{best["pageId"]}），得分 {best["score"]}：{"；".join(best["reasons"])}')
+    log(T('识别主页：{n}（{id}），得分 {s}：{r}', n=best['pageName'], id=best['pageId'], s=best['score'], r=T('；').join(best['reasons'])))
     return best, out[:8]
 
 
@@ -153,7 +161,7 @@ def collect(page, page_id, brand_name, country, depth, active_only, extra_terms,
         except MetaError:
             raise
         except Exception as e:
-            log(f'查询失败 {label}：{str(e).splitlines()[0][:150]}')
+            log(T('查询失败 {label}：{e}', label=_label(label), e=str(e).splitlines()[0][:150]))
             queries.append({'keyword': brand_name, 'label': label, 'url': url, 'total': None, 'got': 0, 'new': 0, 'error': str(e)[:150]})
             return 0
         if kind == 'imp_all':
@@ -174,15 +182,15 @@ def collect(page, page_id, brand_name, country, depth, active_only, extra_terms,
             else:
                 cur['newRank'] = min(cur.get('newRank') or 99, pos)
         queries.append({'keyword': brand_name, 'label': label, 'url': url, 'total': t, 'got': len(got), 'new': new})
-        log(f'{label}：共 {t if t is not None else "?"} 条，拿到 {len(got)} 条，新增 {new} 条（累计 {len(ads)}）')
+        log(T('{label}：共 {t} 条，拿到 {g} 条，新增 {n} 条（累计 {c}）', label=_label(label), t=t if t is not None else '?', g=len(got), n=new, c=len(ads)))
         state['empty'] = state['empty'] + 1 if not got else 0
         if state['empty'] >= 3:
-            raise MetaError('连续 3 次查询没有返回广告，可能被 Meta 暂时限流。过一会儿再试，或换一个代理节点')
+            raise MetaError(T('连续 3 次查询没有返回广告，可能被 Meta 暂时限流。过一会儿再试，或换一个代理节点'))
         time.sleep(1.5)
         return new
 
     for i, (label, p) in enumerate(PAGE_BASE[:n_base]):
-        progress(f'{label}（{i + 1}/{n_base}）· 已拿到 {len(ads)} 条')
+        progress(T('{label}（{i}/{n}）· 已拿到 {c} 条', label=T(label), i=i + 1, n=n_base, c=len(ads)))
         kind = ('imp_all' if i == 0 else 'imp') if p['sort'] == 'total_impressions' else 'new'
         run(label, page_url(country, page_id, p['sort'], p['media'], p.get('platform'), active_only=active_only), kind)
     used, weak, done = set(), 0, 0
@@ -198,10 +206,10 @@ def collect(page, page_id, brand_name, country, depth, active_only, extra_terms,
             continue
         used.add(term)
         done += 1
-        progress(f'主页内搜索“{term}”（{done}/{limit}）· 已拿到 {len(ads)} 条')
+        progress(T('主页内搜索“{t}”（{d}/{l}）· 已拿到 {n} 条', t=term, d=done, l=limit, n=len(ads)))
         new = run(f'主页内搜索 · {term}', page_url(country, page_id, q=term, active_only=active_only), 'imp')
         weak = weak + 1 if new < 3 else 0
         if weak >= 4:
-            log('连续 4 个搜索词几乎没有新广告，停止主页内搜索')
+            log(T('连续 4 个搜索词几乎没有新广告，停止主页内搜索'))
             break
     return {'ads': list(ads.values()), 'queries': queries, 'pageTotal': state['total']}

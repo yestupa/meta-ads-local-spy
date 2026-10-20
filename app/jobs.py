@@ -10,6 +10,7 @@ import threading
 import traceback
 
 from . import config
+from .i18n import T, set_lang
 from .util import load_json, save_json
 
 STEPS = [
@@ -92,7 +93,8 @@ class Manager:
             if d:
                 if d.get('status') in ('queued', 'running'):
                     d['status'] = 'failed'
-                    d.setdefault('notices', []).append({'scope': '任务', 'level': 'error', 'message': '面板被关闭，任务中断。可以点“重新抓取”。'})
+                    lg = (d.get('options') or {}).get('lang')
+                    d.setdefault('notices', []).append({'scope': T('任务', lg), 'level': 'error', 'message': T('面板被关闭，任务中断。可以点“重新抓取”。', lg)})
                 for a in d.get('results', {}).get('ads', []):
                     if a.get('aiStatus') in ('queued', 'running'):
                         a['aiStatus'] = None
@@ -115,6 +117,7 @@ class Manager:
 
     def create(self, keyword, options):
         s = config.load_settings()
+        lang = 'en' if (options.get('lang') or s.get('lang')) == 'en' else 'zh'
         mode = 'brand' if options.get('mode') == 'brand' else 'keyword'
         kws = [keyword.strip()] if mode == 'brand' else split_keywords(keyword)
         now = datetime.datetime.now()
@@ -125,10 +128,10 @@ class Manager:
                 'activeOnly': bool(options.get('activeOnly', True)),
                 'maxVideos': num('maxVideos', s['max_videos'], 0, 80), 'maxImages': num('maxImages', s['max_images'], 0, 300),
                 'aiTopN': num('aiTopN', s['ai_top_n'], 0, 40), 'analyze': bool(options.get('analyze', s['auto_analyze'])),
-                'mode': mode, 'pageId': re.sub(r'\D', '', str(options.get('pageId') or '')) or None,
+                'lang': lang, 'mode': mode, 'pageId': re.sub(r'\D', '', str(options.get('pageId') or '')) or None,
                 'terms': split_keywords(options.get('terms') or '') if isinstance(options.get('terms'), str) else list(options.get('terms') or [])[:10]}
         data = {'id': jid, 'keyword': ', '.join(kws), 'keywords': kws, 'createdAt': now.isoformat(timespec='seconds'), 'status': 'queued',
-                'options': opts, 'steps': {k: {'label': lab, 'status': 'pending'} for k, lab in STEPS},
+                'options': opts, 'steps': {k: {'label': T(lab, lang), 'status': 'pending'} for k, lab in STEPS},
                 'results': {}, 'notices': [], 'log': []}
         job = Job(data)
         os.makedirs(job.dir, exist_ok=True)
@@ -141,9 +144,10 @@ class Manager:
         j = self.jobs.get(jid)
         if not j or j.data['status'] in ('queued', 'running'):
             return None
+        lg = j.data['options'].get('lang')
         j.data['status'] = 'queued'
-        j.data['steps']['analysis'] = {'label': 'AI 分析', 'status': 'pending'}
-        j.data['notices'] = [n for n in j.data.get('notices', []) if n['scope'] != 'AI 分析']
+        j.data['steps']['analysis'] = {'label': T('AI 分析', lg), 'status': 'pending'}
+        j.data['notices'] = [n for n in j.data.get('notices', []) if n['scope'] not in ('AI 分析', 'AI analysis')]
         j.save()
         self.q.put((jid, 'analyze', None))
         return j.data
@@ -153,12 +157,12 @@ class Manager:
         j = self.jobs.get(jid)
         a = j and j.ad(aid)
         if not a:
-            return {'error': '素材不存在'}
+            return {'error': T('素材不存在')}
         if j.data['status'] in ('queued', 'running'):
-            return {'error': '任务正在运行，等它结束后再拆解单条素材'}
+            return {'error': T('任务正在运行，等它结束后再拆解单条素材')}
         if a.get('aiStatus') in ('queued', 'running'):
-            return {'error': '这条素材已经在排队了'}
-        a['aiStatus'], a['aiMsg'] = 'queued', '排队中'
+            return {'error': T('这条素材已经在排队了')}
+        a['aiStatus'], a['aiMsg'] = 'queued', T('排队中', j.data['options'].get('lang'))
         j.save()
         self.q.put((jid, 'ad', aid))
         return {'ok': True}
@@ -206,6 +210,7 @@ class Manager:
             job = self.jobs.get(jid)
             if not job or job.data['status'] == 'cancelled':
                 continue
+            set_lang(job.data['options'].get('lang'))  # 这个任务的提示文字、日志和 AI 输出都用任务创建时的语言
             if mode == 'ad':
                 run_one(job, arg, config.load_settings())
                 continue
@@ -221,10 +226,10 @@ class Manager:
                 job.data['status'] = 'done'
             except Cancelled:
                 job.data['status'] = 'cancelled'
-                job.log('任务已取消')
+                job.log(T('任务已取消'))
             except Exception as e:
                 job.data['status'] = 'failed'
-                job.notice('任务', f'任务出错：{e}', 'error')
+                job.notice(T('任务'), T('任务出错：{e}', e=e), 'error')
                 job.log(traceback.format_exc()[-1500:])
             job.data['finishedAt'] = datetime.datetime.now().isoformat(timespec='seconds')
             job.data['current'] = None
@@ -243,10 +248,10 @@ def launch_browser(pw, settings):
     for ch in (None, 'chrome', 'msedge'):
         try:
             b = pw.chromium.launch(channel=ch, **kw) if ch else pw.chromium.launch(**kw)
-            return b, {None: '内置 Chromium', 'chrome': 'Google Chrome', 'msedge': 'Microsoft Edge'}[ch]
+            return b, {None: T('内置 Chromium'), 'chrome': 'Google Chrome', 'msedge': 'Microsoft Edge'}[ch]
         except Exception as e:
             errors.append(f'{ch or "chromium"}: {str(e).splitlines()[0][:140]}')
-    raise RuntimeError('无法启动浏览器。请先运行“1-安装”，或安装 Google Chrome。详情：' + ' ; '.join(errors))
+    raise RuntimeError(T('无法启动浏览器。请先运行“1-安装”，或安装 Google Chrome。详情：{d}', d=' ; '.join(errors)))
 
 
 def run_collect(job, settings):
@@ -258,20 +263,20 @@ def run_collect(job, settings):
     s = dict(settings, max_videos=opts['maxVideos'], max_images=opts['maxImages'])
     run_date = datetime.date.today()
     with sync_playwright() as pw:
-        job.step('browser', 'running', '正在启动浏览器')
+        job.step('browser', 'running', T('正在启动浏览器'))
         try:
             browser, name = launch_browser(pw, settings)
         except Exception as e:
             job.step('browser', 'failed', str(e))
             for k in ('collect', 'shop', 'media', 'local'):
-                job.step(k, 'skipped', '浏览器没有启动')
+                job.step(k, 'skipped', T('浏览器没有启动'))
             raise RuntimeError(str(e))
-        job.step('browser', 'done', f'已启动 {name}')
+        job.step('browser', 'done', T('已启动 {name}', name=name))
         try:
             ctx = browser.new_context(locale='en-US', viewport={'width': 1280, 'height': 1600},
                                       user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36')
             page = ctx.new_page()
-            job.step('collect', 'running', '正在打开 Meta 广告资料库')
+            job.step('collect', 'running', T('正在打开 Meta 广告资料库'))
             prog = lambda m: job.step('collect', 'running', m)
             try:
                 if opts.get('mode') == 'brand':
@@ -282,47 +287,46 @@ def run_collect(job, settings):
                     got = meta.collect(page, job.data['keywords'], opts['country'], opts['depth'], opts['activeOnly'], job.log, prog, job.check)
             except meta.MetaError as e:
                 job.step('collect', 'failed', str(e))
-                job.notice('广告资料库', str(e), 'error')
+                job.notice(T('广告资料库'), str(e), 'error')
                 for k in ('shop', 'media', 'local'):
-                    job.step(k, 'skipped', '没有采集到广告')
+                    job.step(k, 'skipped', T('没有采集到广告'))
                 return
             ads = got['ads']
             res.update(ads=ads, queries=got['queries'], totals=got['totals'])
-            tot = '；'.join(f'“{k}” 在投 {v:,} 条' for k, v in got['totals'].items() if v is not None)
-            job.step('collect', 'done' if ads else 'failed', f'合并去重后 {len(ads)} 条广告' + (f'（资料库：{tot}）' if tot else ''), len(ads))
+            tot = T('；').join(T('“{k}” 在投 {v} 条', k=k, v=f'{v:,}') for k, v in got['totals'].items() if v is not None)
+            job.step('collect', 'done' if ads else 'failed', T('合并去重后 {n} 条广告', n=len(ads)) + (T('（资料库：{tot}）', tot=tot) if tot else ''), len(ads))
             if not ads:
-                job.notice('广告资料库', '这个关键词在所选国家没有在投广告。换一个更宽泛的英文词，或者把国家改成“全部国家”再试。')
+                job.notice(T('广告资料库'), T('这个关键词在所选国家没有在投广告。换一个更宽泛的英文词，或者把国家改成“全部国家”再试。'))
                 for k in ('shop', 'media', 'local'):
-                    job.step(k, 'skipped', '没有采集到广告')
+                    job.step(k, 'skipped', T('没有采集到广告'))
                 return
             if got.get('stoppedEarly'):
-                job.notice('广告资料库', '连续几次查询没有返回广告，可能被 Meta 暂时限流，已提前结束采集。过一会儿再试，或换一个代理节点。')
+                job.notice(T('广告资料库'), T('连续几次查询没有返回广告，可能被 Meta 暂时限流，已提前结束采集。过一会儿再试，或换一个代理节点。'))
             if opts.get('mode') == 'brand':
                 pt = got['totals'].get(job.data['keyword'])
                 if pt and pt > len(ads):
-                    job.notice('广告资料库', f'这个主页在投 {pt:,} 条，本次拿到 {len(ads)} 条（{len(ads) / pt:.0%}）。未登录时 Meta 每次只返回 30 条、翻页被限流，'
-                               '工具用多组排序/形式/平台组合和“主页内搜索”滚雪球来多拿素材。想要更多：选“深度”，或在“主页内关键词”里填品类词（如 dog food, cat litter）。', 'info')
+                    job.notice(T('广告资料库'), T('这个主页在投 {pt} 条，本次拿到 {n} 条（{pct}）。未登录时 Meta 每次只返回 30 条、翻页被限流，工具用多组排序/形式/平台组合和“主页内搜索”滚雪球来多拿素材。想要更多：选“深度”，或在“主页内关键词”里填品类词（如 dog food, cat litter）。',
+                                                  pt=f'{pt:,}', n=len(ads), pct=f'{len(ads) / pt:.0%}'), 'info')
             elif any(v and v > len(ads) for v in got['totals'].values()):
-                job.notice('广告资料库', '未登录时 Meta 每次只返回 30 条（翻页接口会被限流），所以工具用多组排序/筛选组合来多拿素材。'
-                           '想要更多，可以在“采集深度”里选“深度”，或者再加几个相关关键词（用逗号分隔）。', 'info')
+                job.notice(T('广告资料库'), T('未登录时 Meta 每次只返回 30 条（翻页接口会被限流），所以工具用多组排序/筛选组合来多拿素材。想要更多，可以在“采集深度”里选“深度”，或者再加几个相关关键词（用逗号分隔）。'), 'info')
             job.save()
             job.check()
 
             # ---- 落地页商品（用同一个浏览器读取，Shopify 会拦截非浏览器的请求） ----
             if settings.get('shop_enrich'):
-                job.step('shop', 'running', '正在读取落地页商品信息')
+                job.step('shop', 'running', T('正在读取落地页商品信息'))
                 try:
                     prods = shop.enrich(page, ads, job.log, lambda m: job.step('shop', 'running', m), job.check)
                     n_pages = sum(1 for a in ads if a.get('productKey'))
-                    job.step('shop', 'done', f'{n_pages} 条广告落地到商品页，读到 {len(prods)} 个 Shopify 商品的售价/原价', len(prods))
+                    job.step('shop', 'done', T('{n} 条广告落地到商品页，读到 {p} 个 Shopify 商品的售价/原价', n=n_pages, p=len(prods)), len(prods))
                 except Cancelled:
                     raise
                 except Exception as e:
-                    job.step('shop', 'failed', f'读取失败：{str(e)[:150]}')
+                    job.step('shop', 'failed', T('读取失败：{e}', e=str(e)[:150]))
             else:
                 for a in ads:
                     a['domain'] = shop.product_ref(a.get('linkUrl'))[0]
-                job.step('shop', 'skipped', '设置里关闭了')
+                job.step('shop', 'skipped', T('设置里关闭了'))
         finally:
             try:
                 browser.close()
@@ -334,21 +338,21 @@ def run_collect(job, settings):
     res['insights'] = insights.aggregate(ads, run_date)
     job.save()
     if not media.has_ffmpeg():
-        job.notice('素材', '没有找到 ffmpeg（imageio-ffmpeg），视频无法分镜。请重新运行“1-安装”。', 'error')
+        job.notice(T('素材'), T('没有找到 ffmpeg（imageio-ffmpeg），视频无法分镜。请重新运行“1-安装”。'), 'error')
     if settings.get('transcribe') and not media.whisper_ok():
-        job.notice('语音转写', '没有安装 faster-whisper，视频不做语音转写。需要的话运行“1-安装”时选择安装语音转写。', 'info')
-    job.step('media', 'running', '正在下载素材')
+        job.notice(T('语音转写'), T('没有安装 faster-whisper，视频不做语音转写。需要的话运行“1-安装”时选择安装语音转写。'), 'info')
+    job.step('media', 'running', T('正在下载素材'))
     n_v, n_i, fails = media.localize(ads, job.dir, s, job.log, lambda m: job.step('media', 'running', m), job.check)
-    job.step('media', 'done', f'视频 {n_v} 条（分镜、切镜节奏' + ('、语音转写' if settings.get('transcribe') and media.whisper_ok() else '') +
-             f'），图片广告 {n_i} 条，缩略图 {sum(1 for a in ads if a.get("thumb"))} 张' + (f'；{fails} 条失败' if fails else ''), n_v + n_i)
+    tpl = '视频 {v} 条（分镜、切镜节奏、语音转写），图片广告 {i} 条，缩略图 {t} 张' if settings.get('transcribe') and media.whisper_ok() else '视频 {v} 条（分镜、切镜节奏），图片广告 {i} 条，缩略图 {t} 张'
+    job.step('media', 'done', T(tpl, v=n_v, i=n_i, t=sum(1 for a in ads if a.get('thumb'))) + (T('；{f} 条失败', f=fails) if fails else ''), n_v + n_i)
     job.check()
 
     # ---- 本地分析 ----
-    job.step('local', 'running', '正在统计')
+    job.step('local', 'running', T('正在统计'))
     res['insights'] = insights.media_aggregate(ads, insights.aggregate(ads, run_date))
     ins = res['insights']
-    job.step('local', 'done', f'{len(ins["advertisers"])} 个店铺主页 · {len(ins["products"])} 个落地商品 · '
-                              f'{len(ins["sameProduct"])} 组同款竞争 · {ins["verdicts"].get("常青爆款", 0)} 条常青爆款')
+    job.step('local', 'done', T('{a} 个店铺主页 · {p} 个落地商品 · {s} 组同款竞争 · {e} 条常青爆款', a=len(ins['advertisers']), p=len(ins['products']),
+                                s=len(ins['sameProduct']), e=ins['verdicts'].get('常青爆款', 0)))
     job.save()
 
 
@@ -358,19 +362,19 @@ def collect_brand(job, page, opts, prog):
     res = job.data['results']
     text = job.data['keyword']
     if opts.get('pageId'):
-        best, cands = {'pageId': opts['pageId'], 'pageName': None, 'score': 100, 'reasons': ['手动选择的主页']}, []
+        best, cands = {'pageId': opts['pageId'], 'pageName': None, 'score': 100, 'reasons': [T('手动选择的主页')]}, []
     else:
         best, cands = brand.identify(page, text, opts['country'], job.log, prog)
     if not best:
-        job.step('collect', 'failed', f'资料库里没有找到“{text}”相关的广告主页')
-        job.notice('品牌主页', f'按“{text}”搜索没有找到任何广告主页。试试品牌的英文名、官网域名（如 chewy.com）或 Facebook 主页链接。', 'error')
+        job.step('collect', 'failed', T('资料库里没有找到“{t}”相关的广告主页', t=text))
+        job.notice(T('品牌主页'), T('按“{t}”搜索没有找到任何广告主页。试试品牌的英文名、官网域名（如 chewy.com）或 Facebook 主页链接。', t=text), 'error')
         for k in ('shop', 'media', 'local'):
-            job.step(k, 'skipped', '没有识别到主页')
+            job.step(k, 'skipped', T('没有识别到主页'))
         return None
     res['brand'] = {'input': text, 'page': best, 'candidates': cands}
     job.save()
     if cands and (best['score'] < 45 or (len(cands) > 1 and cands[1]['score'] >= best['score'] - 5)):
-        job.notice('品牌主页', f'自动选择了“{best["pageName"]}”，但把握不大。请在“品牌主页”里核对，不对的话点候选主页旁的“改抓这个主页”。')
+        job.notice(T('品牌主页'), T('自动选择了“{n}”，但把握不大。请在“品牌主页”里核对，不对的话点候选主页旁的“改抓这个主页”。', n=best['pageName']))
     got = brand.collect(page, best['pageId'], text, opts['country'], opts['depth'], opts['activeOnly'], opts.get('terms') or [],
                         job.log, prog, job.check)
     if got['ads']:
@@ -402,36 +406,36 @@ def run_analysis(job, settings, force=False):
     kw = job.data['keyword']
     engine = settings.get('engine') or 'claude_code'
     if not ads:
-        job.step('analysis', 'skipped', '没有素材可分析')
+        job.step('analysis', 'skipped', T('没有素材可分析'))
         return
     if not force and not opts.get('analyze'):
-        job.step('analysis', 'skipped', '本次任务没有勾选“抓完自动 AI 分析”，可以稍后点“AI 分析”')
+        job.step('analysis', 'skipped', T('本次任务没有勾选“抓完自动 AI 分析”，可以稍后点“AI 分析”'))
         return
     if engine == 'none':
-        job.step('analysis', 'skipped', '设置里选择了“不做 AI 分析”')
+        job.step('analysis', 'skipped', T('设置里选择了“不做 AI 分析”'))
         return
     if engine == 'api' and not settings.get('api_key'):
-        job.step('analysis', 'skipped', '未配置 Claude API key，跳过 AI 分析')
-        job.notice('AI 分析', '分析引擎选的是 Claude API，但没有填 API key。可以在“设置”里填 key，或者改成 Claude Code（用订阅，不需要 key），然后点“AI 分析”。')
+        job.step('analysis', 'skipped', T('未配置 Claude API key，跳过 AI 分析'))
+        job.notice(T('AI 分析'), T('分析引擎选的是 Claude API，但没有填 API key。可以在“设置”里填 key，或者改成 Claude Code（用订阅，不需要 key），然后点“AI 分析”。'))
         return
     try:
         an = _engine(job, settings)
     except AnalyzeError as e:
         job.step('analysis', 'failed', str(e))
-        job.notice('AI 分析', str(e), 'error')
+        job.notice(T('AI 分析'), str(e), 'error')
         return
-    job.log(f'分析引擎：{"Claude Code" if engine == "claude_code" else "Claude API"}（{an.model}）')
+    job.log(T('分析引擎：{e}（{m}）', e='Claude Code' if engine == 'claude_code' else 'Claude API', m=an.model))
     errors = []
 
     def attempt(label, fn):
         job.check()
-        job.step('analysis', 'running', f'正在分析：{label}')
+        job.step('analysis', 'running', T('正在分析：{l}', l=label))
         try:
             return fn()
         except AnalyzeError as e:
-            errors.append(f'{label}：{e}')
-            job.log(f'分析失败 {label}：{e}')
-            if any(k in str(e) for k in FATAL):
+            errors.append(T('{l}：{e}', l=label, e=e))
+            job.log(T('分析失败 {l}：{e}', l=label, e=e))
+            if getattr(e, 'fatal', False) or any(k in str(e) for k in FATAL):
                 raise
         return None
 
@@ -444,7 +448,7 @@ def run_analysis(job, settings, force=False):
         reps = [xs[0] for xs in groups.values()]
         for i in range(0, len(reps), 40):
             part = reps[i:i + 40]
-            r = attempt(f'文案 {i + 1}–{i + len(part)} / {len(reps)} 段', lambda part=part: an.copy_batch(kw, part)) or {}
+            r = attempt(T('文案 {a}–{b} / {n} 段', a=i + 1, b=i + len(part), n=len(reps)), lambda part=part: an.copy_batch(kw, part)) or {}
             for rep in part:
                 if rep['id'] in r:
                     for a in groups[_norm(rep['body'])]:
@@ -454,7 +458,7 @@ def run_analysis(job, settings, force=False):
         top = [a for a in ads[:opts.get('aiTopN', 12)] if not a.get('analysis')]
         imgs = [a for a in top if not a.get('videos') and (a.get('localImages') or a.get('thumb'))]
         if imgs:
-            r = attempt(f'图片素材（{len(imgs)} 条）', lambda: an.image_ads(kw, imgs, job.dir)) or {}
+            r = attempt(T('图片素材（{n} 条）', n=len(imgs)), lambda: an.image_ads(kw, imgs, job.dir)) or {}
             for a in imgs:
                 if a['id'] in r:
                     a['analysis'] = dict(r[a['id']], kind='image')
@@ -462,23 +466,23 @@ def run_analysis(job, settings, force=False):
         for a in [a for a in top if a.get('videos')]:
             if not (a.get('video') or {}).get('storyboard') and not a.get('thumb'):
                 continue
-            out = attempt(f'视频 #{a["rank"]} {a.get("pageName") or ""}', lambda a=a: an.video_ad(kw, a, job.dir))
+            out = attempt(T('视频 #{r} {p}', r=a['rank'], p=a.get('pageName') or ''), lambda a=a: an.video_ad(kw, a, job.dir))
             if out:
                 a['analysis'] = dict(out, kind='video')
                 job.save()
         # 3. 总结
-        s = attempt('关键词总结', lambda: an.summary(job.data))
+        s = attempt(T('关键词总结'), lambda: an.summary(job.data))
         if s:
             res['summary'] = s
     except AnalyzeError as e:
         job.step('analysis', 'failed', str(e))
-        job.notice('AI 分析', str(e), 'error')
+        job.notice(T('AI 分析'), str(e), 'error')
         return
     job.data['usage'] = an.usage
-    msg = f'完成 {an.usage["calls"]} 次调用（输入约 {an.usage["input"]:,} tokens，输出约 {an.usage["output"]:,} tokens）'
-    job.step('analysis', 'done', msg + (f'；{len(errors)} 项失败' if errors else ''))
+    msg = T('完成 {c} 次调用（输入约 {i} tokens，输出约 {o} tokens）', c=an.usage['calls'], i=f'{an.usage["input"]:,}', o=f'{an.usage["output"]:,}')
+    job.step('analysis', 'done', msg + (T('；{n} 项失败', n=len(errors)) if errors else ''))
     for e in errors:
-        job.notice('AI 分析', e)
+        job.notice(T('AI 分析'), e)
 
 
 def run_one(job, aid, settings):
@@ -493,12 +497,12 @@ def run_one(job, aid, settings):
         job.save()
     engine = settings.get('engine') or 'claude_code'
     if engine == 'none':
-        return upd('failed', '设置里的分析引擎是“不做 AI 分析”')
+        return upd('failed', T('设置里的分析引擎是“不做 AI 分析”'))
     if engine == 'api' and not settings.get('api_key'):
-        return upd('failed', '分析引擎是 Claude API，但没有填 API key')
+        return upd('failed', T('分析引擎是 Claude API，但没有填 API key'))
     try:
         if a.get('videos') and not a.get('localVideo'):
-            upd('running', '正在下载视频、生成分镜' + ('、语音转写' if settings.get('transcribe') and media.whisper_ok() else ''))
+            upd('running', T('正在下载视频、生成分镜、语音转写' if settings.get('transcribe') and media.whisper_ok() else '正在下载视频、生成分镜'))
             from .util import download
             v0 = a['videos'][0]
             p = download(v0.get('hd') or v0.get('sd'), os.path.join(job.dir, 'assets', 'media', f'{aid}.mp4'), settings.get('proxy') or '', 120)
@@ -512,7 +516,7 @@ def run_one(job, aid, settings):
                 download(u, os.path.join(job.dir, 'assets', 'media', f'{aid}-img{k + 1}.jpg'), settings.get('proxy') or '', 40)
                 imgs.append(f'assets/media/{aid}-img{k + 1}.jpg')
             a['localImages'] = imgs
-        upd('running', '正在用 AI 拆解（通常 1–3 分钟）')
+        upd('running', T('正在用 AI 拆解（通常 1–3 分钟）'))
         an = _engine(job, settings)
         kw = job.data['keyword']
         if a.get('videos'):
@@ -521,9 +525,9 @@ def run_one(job, aid, settings):
             a['analysis'] = dict(an.image_ads(kw, [a], job.dir)[aid], kind='image')
         if a.get('body') and not a.get('copyReview'):
             a['copyReview'] = an.copy_batch(kw, [a]).get(aid)
-        upd('done', f'已拆解（{an.usage["calls"]} 次调用）')
+        upd('done', T('已拆解（{n} 次调用）', n=an.usage['calls']))
     except (AnalyzeError, KeyError) as e:
-        upd('failed', str(e) or '模型没有返回这条素材的结果')
+        upd('failed', (str(e) if isinstance(e, AnalyzeError) else '') or T('模型没有返回这条素材的结果'))
     except Exception as e:
         job.log(traceback.format_exc()[-1500:])
-        upd('failed', f'拆解失败：{str(e)[:200]}')
+        upd('failed', T('拆解失败：{e}', e=str(e)[:200]))

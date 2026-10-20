@@ -12,7 +12,6 @@ If you have [Claude Code](https://claude.com/claude-code) or Codex, just tell it
 
 ```
 Install and start this tool for me: https://github.com/yestupa/meta-ads-local-spy
-Follow the steps in INSTALL.md in the repo.
 ```
 
 It will clone the repo, check Python, install dependencies and the browser, and start the panel.
@@ -21,7 +20,8 @@ To update later, ask it to "update meta-ads-local-spy". Prefer a download? Get t
 
 ![Brand mode](docs/screenshots/01-brand-summary.png)
 
-> The panel UI is in Simplified Chinese.
+> The panel has an **English / 中文** switch at the top right. It opens in your browser's language the first time;
+> AI analysis, progress messages and exports for a new job use the language selected when the job was started.
 
 ## What it does
 

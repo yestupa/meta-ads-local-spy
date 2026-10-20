@@ -10,6 +10,7 @@ import subprocess
 
 from PIL import Image, ImageDraw, ImageStat
 
+from .i18n import T
 from .util import download
 
 THUMB_W = 480
@@ -158,7 +159,7 @@ def process_video(path, out_dir, rel_dir, stem, do_transcribe, whisper_model):
         try:
             v['transcript'] = transcribe(path, whisper_model)
         except Exception as e:
-            v['transcript'] = {'text': '', 'error': f'转写失败：{str(e)[:120]}', 'segments': []}
+            v['transcript'] = {'text': '', 'error': T('转写失败：{e}', e=str(e)[:120]), 'segments': []}
     return v
 
 
@@ -212,13 +213,13 @@ def localize(ads, root, settings, log, progress, check):
         afuts = {ex.submit(download, u, os.path.join(root, 'assets', 'avatars', f'{pid}.jpg'), proxy, 20): pid for pid, u in avatars.items()}
         for i, f in enumerate(cf.as_completed(futs)):
             a = futs[f]
-            progress(f'下载图片和封面 {i + 1}/{len(ads)}')
+            progress(T('下载图片和封面 {i}/{n}', i=i + 1, n=len(ads)))
             try:
                 f.result()
             except Exception as e:
                 fails += 1
                 a['mediaError'] = str(e).splitlines()[0][:160]
-                log(f'图片下载失败 {a["id"]}：{a["mediaError"]}')
+                log(T('图片下载失败 {id}：{e}', id=a['id'], e=a['mediaError']))
             if i % 10 == 0:
                 check()
         ok_av = {afuts[f] for f in cf.as_completed(afuts) if not f.exception()}
@@ -229,7 +230,7 @@ def localize(ads, root, settings, log, progress, check):
     for a in [a for a in ads if a.get('videos')][:max_v]:
         check()
         n_v += 1
-        progress(f'处理视频 {n_v}/{min(max_v, sum(1 for x in ads if x.get("videos")))}（{a.get("pageName") or ""}）：下载、分镜' + ('、语音转写' if do_tr else ''))
+        progress(T('处理视频 {i}/{n}（{p}）：下载、分镜、语音转写' if do_tr else '处理视频 {i}/{n}（{p}）：下载、分镜', i=n_v, n=min(max_v, sum(1 for x in ads if x.get('videos'))), p=a.get('pageName') or ''))
         try:
             v0 = a['videos'][0]
             p = download(v0.get('hd') or v0.get('sd'), os.path.join(mdir, f'{a["id"]}.mp4'), proxy, 120)
@@ -239,5 +240,5 @@ def localize(ads, root, settings, log, progress, check):
         except Exception as e:
             fails += 1
             a['mediaError'] = str(e).splitlines()[0][:160]
-            log(f'视频处理失败 {a["id"]}：{a["mediaError"]}')
+            log(T('视频处理失败 {id}：{e}', id=a['id'], e=a['mediaError']))
     return n_v, n_i, fails
